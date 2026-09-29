@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Savings Goals — SpendWise</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="store.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarContainer"></div>
+  <div class="main">
+    <div id="topbarContainer"></div>
+    <div class="page-content">
+      <div class="animate-rise-in" id="pageContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('sidebarContainer').innerHTML = renderSidebar('goals.html');
+document.getElementById('topbarContainer').innerHTML = renderTopbar();
+
+function goalFormHTML(initial) {
+  return `
+    <form id="goalForm" onsubmit="return false" style="display:flex;flex-direction:column;gap:16px">
+      <label class="label">Goal name
+        <input class="input" name="name" required placeholder="e.g. New laptop" value="${initial?.name||''}" style="margin-top:6px">
+      </label>
+      <label class="label">Target amount
+        <input class="input" type="number" name="targetAmount" min="1" required placeholder="25000" value="${initial?.targetAmount||''}" style="margin-top:6px">
+      </label>
+      <label class="label">Already saved
+        <input class="input" type="number" name="currentAmount" min="0" placeholder="0" value="${initial?.currentAmount||0}" style="margin-top:6px">
+      </label>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding-top:8px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save goal</button>
+      </div>
+    </form>`;
+}
+
+function render() {
+  const { goals } = getStore();
+  document.getElementById('pageContent').innerHTML = `
+    <div class="page-heading">
+      <div>
+        <p class="page-heading-eyebrow">Future you is watching</p>
+        <h1 class="page-heading-title font-display">Savings goals</h1>
+        <p class="page-heading-desc">Give your spare money somewhere meaningful to go.</p>
+      </div>
+      <button class="btn btn-primary" onclick="showAddModal()">${icons.plus} New goal</button>
+    </div>
+
+    ${goals.length ? `
+      <div class="grid-3">
+        ${goals.map(goal => `
+          <div class="card" style="padding:24px;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:32px">
+              <div style="width:44px;height:44px;border-radius:16px;background:var(--secondary);display:grid;place-items:center;color:var(--primary)">${icons.target}</div>
+              <div style="display:flex;gap:4px">
+                <button onclick="editGoal(${goal.id})" style="background:none;border:none;cursor:pointer;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted-fg)">Edit</button>
+                <button onclick="removeGoal(${goal.id})" style="background:none;border:none;cursor:pointer;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:600;color:var(--destructive)">Delete</button>
+              </div>
+            </div>
+            ${renderGoalProgress(goal)}
+            <div style="margin-top:auto;padding-top:28px;font-size:12px;color:var(--muted-fg)">Keep adding small amounts. They compound.</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : `
+      <div class="card">
+        <div class="empty-state">
+          <div class="empty-icon">${icons.target}</div>
+          <h2 class="empty-title">What are you saving for?</h2>
+          <p class="empty-copy">A weekend away, a new laptop, a softer landing. Name the thing and make it real.</p>
+          <button class="btn btn-primary" style="margin-top:20px" onclick="showAddModal()">${icons.plus} Create your first goal</button>
+        </div>
+      </div>
+    `}
+  `;
+}
+
+function showAddModal() {
+  openModal('Create a savings goal', goalFormHTML(null));
+  document.getElementById('goalForm').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    addGoal({ name: fd.get('name'), targetAmount: Number(fd.get('targetAmount')), currentAmount: Number(fd.get('currentAmount')) });
+    closeModal(); render();
+  };
+}
+
+function editGoal(id) {
+  const goal = getStore().goals.find(g => g.id === id);
+  if (!goal) return;
+  openModal('Edit savings goal', goalFormHTML(goal));
+  document.getElementById('goalForm').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    updateGoal(id, { name: fd.get('name'), targetAmount: Number(fd.get('targetAmount')), currentAmount: Number(fd.get('currentAmount')) });
+    closeModal(); render();
+  };
+}
+
+function removeGoal(id) {
+  if (confirm('Delete this goal?')) { deleteGoal(id); render(); }
+}
+
+render();
+</script>
+</body>
+</html>

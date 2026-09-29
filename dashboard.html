@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — SpendWise</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="store.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarContainer"></div>
+  <div class="main">
+    <div id="topbarContainer"></div>
+    <div class="page-content">
+      <div class="animate-rise-in" id="dashContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('sidebarContainer').innerHTML = renderSidebar('dashboard.html');
+document.getElementById('topbarContainer').innerHTML = renderTopbar();
+
+function render() {
+  const { transactions, goals, settings } = getStore();
+  const { monday, sunday } = getWeekRange();
+
+  const weekTx = transactions.filter(t => {
+    const d = new Date(t.date + 'T00:00:00');
+    return d >= monday && d <= sunday;
+  });
+
+  const totalIncome = transactions.reduce((s,t) => t.type==='income' ? s+t.amount : s, 0);
+  const totalExpenses = transactions.reduce((s,t) => t.type==='expense' ? s+t.amount : s, 0);
+  const balance = totalIncome - totalExpenses;
+  const weeklySpent = weekTx.reduce((s,t) => t.type==='expense' ? s+t.amount : s, 0);
+  const weeklyAllowance = settings.weeklyAllowance;
+  const weeklyRemaining = weeklyAllowance - weeklySpent;
+  const spentPct = weeklyAllowance > 0 ? (weeklySpent / weeklyAllowance) * 100 : 0;
+  const safeToSpend = weeklyAllowance > 0 ? Math.max(0, (weeklyRemaining - settings.weeklySavingsTarget) / 7) : 0;
+
+  const catMap = {};
+  transactions.filter(t=>t.type==='expense').forEach(t => { catMap[t.category] = (catMap[t.category]||0) + t.amount; });
+  const topCategory = Object.entries(catMap).sort((a,b)=>b[1]-a[1])[0]?.[0] || 'Not yet';
+  const weeklyStatus = spentPct <= 100 ? 'On track' : 'Over budget';
+  const activeGoal = goals[0] ?? null;
+  const recentTx = transactions.slice(0, 4);
+
+  document.getElementById('dashContent').innerHTML = `
+    <div class="page-heading">
+      <div>
+        <p class="page-heading-eyebrow">Dashboard</p>
+        <h1 class="page-heading-title font-display">Good morning.</h1>
+        <p class="page-heading-desc">Here's the shape of your money this week.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="showAddModal('income')">${icons.plus} Add money</button>
+        <button class="btn btn-soft" onclick="showAddModal('expense')">${icons.plus} Add expense</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Balance card -->
+      <div class="card" style="position:relative;overflow:hidden;background:var(--primary);padding:32px">
+        <div style="position:absolute;right:-80px;top:-112px;width:288px;height:288px;border-radius:50%;border:30px solid rgba(246,215,122,.2)"></div>
+        <div style="position:relative">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <p style="font-size:13px;color:rgba(251,248,239,.7);font-weight:500">Available balance</p>
+            <span style="border-radius:99px;background:rgba(251,248,239,.1);padding:4px 12px;font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--primary-fg)">Live balance</span>
+          </div>
+          <p class="font-display" style="margin-top:20px;font-size:clamp(2.5rem,6vw,3.5rem);font-weight:700;letter-spacing:-.05em;color:var(--primary-fg)">${currency(balance)}</p>
+          <div style="margin-top:32px;display:flex;flex-wrap:wrap;gap:24px;border-top:1px solid rgba(251,248,239,.15);padding-top:20px">
+            <div><p style="font-size:11px;color:rgba(251,248,239,.6)">Total in</p><p style="margin-top:4px;font-family:'DM Mono',monospace;font-size:13px;color:var(--primary-fg)">${currency(totalIncome)}</p></div>
+            <div><p style="font-size:11px;color:rgba(251,248,239,.6)">Total out</p><p style="margin-top:4px;font-family:'DM Mono',monospace;font-size:13px;color:var(--primary-fg)">${currency(totalExpenses)}</p></div>
+            <div><p style="font-size:11px;color:rgba(251,248,239,.6)">Top category</p><p style="margin-top:4px;font-size:13px;font-weight:700;color:var(--primary-fg)">${topCategory}</p></div>
+          </div>
+        </div>
+      </div>
+      <!-- Weekly card -->
+      <div class="card" style="padding:32px;display:flex;flex-direction:column;justify-content:space-between">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <p style="font-size:14px;font-weight:700">This week</p>
+            <span style="border-radius:99px;padding:4px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;background:${spentPct<=100?'#d9eee4':'#f8dfd9'};color:${spentPct<=100?'#2d806b':'#c66555'}">${weeklyStatus}</span>
+          </div>
+          <p class="font-display" style="margin-top:16px;font-size:28px;font-weight:700">${currency(weeklyRemaining)}</p>
+          <p style="margin-top:4px;font-size:12px;color:var(--muted-fg)">left from ${currency(weeklyAllowance)} pocket money</p>
+        </div>
+        <div style="margin-top:32px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted-fg);margin-bottom:8px">
+            <span>Spent ${currency(weeklySpent)}</span><span>${Math.round(spentPct)}%</span>
+          </div>
+          <div style="height:8px;border-radius:99px;background:var(--muted)">
+            <div style="height:100%;border-radius:99px;background:var(--accent);width:${Math.min(100,spentPct)}%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:20px">
+      <!-- Safe to spend -->
+      <div class="card" style="padding:28px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px">
+          <div>
+            <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">A useful number</p>
+            <h2 class="font-display" style="margin-top:8px;font-size:22px;font-weight:700">Safe to spend today</h2>
+          </div>
+          <div style="width:44px;height:44px;border-radius:16px;background:var(--secondary);display:grid;place-items:center;color:var(--primary)">${icons.target}</div>
+        </div>
+        <p class="font-display" style="font-size:clamp(2rem,5vw,3rem);font-weight:700;letter-spacing:-.04em">${currency(safeToSpend)}</p>
+        <p style="margin-top:8px;font-size:13px;color:var(--muted-fg);line-height:1.6;max-width:280px">Your daily breathing room after setting aside this week's savings target.</p>
+        <div style="margin-top:28px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#2d806b">${icons.check} ${weeklyStatus}</div>
+      </div>
+      <!-- Recent transactions -->
+      <div class="card" style="padding:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div>
+            <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">Latest movement</p>
+            <h2 class="font-display" style="margin-top:8px;font-size:22px;font-weight:700">Recent transactions</h2>
+          </div>
+          <a href="history.html" style="font-size:12px;font-weight:700;color:var(--accent);text-decoration:none">View history</a>
+        </div>
+        ${recentTx.length
+          ? recentTx.map(t => renderTxRow(t, false)).join('')
+          : `<div class="empty-state"><div class="empty-icon">${icons.dollar}</div><h2 class="empty-title">Your story starts here</h2><p class="empty-copy">Add your first transaction.</p><button class="btn btn-primary" style="margin-top:20px" onclick="showAddModal('income')">${icons.plus} Add money</button></div>`}
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:20px">
+      <!-- Donut chart -->
+      <div class="card" style="padding:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">Weekly pulse</p>
+            <h2 class="font-display" style="margin-top:8px;font-size:22px;font-weight:700">Spent vs. remaining</h2>
+          </div>
+          ${icons.trending}
+        </div>
+        <div style="position:relative;height:220px;max-width:280px;margin:12px auto 0">
+          <canvas id="donutChart"></canvas>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+            <span class="font-display" style="font-size:22px;font-weight:700">${currency(balance)}</span>
+            <span style="font-size:12px;color:var(--muted-fg)">remaining</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:center;gap:20px;font-size:12px;color:var(--muted-fg);margin-top:4px">
+          <span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e6816d;margin-right:6px"></i>Spent</span>
+          <span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f6d77a;margin-right:6px"></i>Remaining</span>
+        </div>
+      </div>
+      <!-- Active goal -->
+      <div class="card" style="padding:28px">
+        ${activeGoal ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+            <div>
+              <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">One thing at a time</p>
+              <h2 class="font-display" style="margin-top:8px;font-size:22px;font-weight:700">Active goal</h2>
+            </div>
+            <a href="goals.html" style="font-size:12px;font-weight:700;color:var(--accent);text-decoration:none">Manage</a>
+          </div>
+          ${renderGoalProgress(activeGoal)}
+        ` : `<div class="empty-state"><div class="empty-icon">${icons.target}</div><h2 class="empty-title">Make room for a goal</h2><p class="empty-copy">A small target makes future-you feel looked after.</p><a href="goals.html" style="margin-top:20px;font-size:14px;font-weight:700;color:var(--accent);text-decoration:none">Create a goal →</a></div>`}
+      </div>
+    </div>
+
+    <div style="margin-top:24px;display:flex;flex-wrap:wrap;gap:8px">
+      <a href="history.html" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;border:1px solid var(--border);background:var(--card);padding:8px 14px;font-size:12px;font-weight:700;text-decoration:none;color:var(--fg)">View all transactions ›</a>
+      <a href="analytics.html" style="display:inline-flex;align-items:center;gap:6px;border-radius:12px;border:1px solid var(--border);background:var(--card);padding:8px 14px;font-size:12px;font-weight:700;text-decoration:none;color:var(--fg)">See analytics ›</a>
+    </div>
+  `;
+
+  // Draw donut chart
+  const ctx = document.getElementById('donutChart');
+  if (ctx) {
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Spent', 'Remaining'],
+        datasets: [{ data: [Math.max(0, totalExpenses), Math.max(0, balance)], backgroundColor: ['#e6816d', '#f6d77a'], borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: { cutout: '72%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => currency(ctx.raw) } } } }
+    });
+  }
+}
+
+function showAddModal(type) {
+  openModal(type === 'income' ? 'Add money' : 'Add expense', renderTransactionForm({ type }, 'addTxForm'));
+  document.getElementById('addTxForm').onsubmit = (e) => {
+    e.preventDefault();
+    const data = getFormData('addTxForm');
+    if (!data.amount || !data.date) return;
+    addTransaction(data);
+    closeModal();
+    render();
+  };
+}
+
+render();
+</script>
+</body>
+</html>

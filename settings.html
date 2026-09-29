@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — SpendWise</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="store.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarContainer"></div>
+  <div class="main">
+    <div id="topbarContainer"></div>
+    <div class="page-content">
+      <div class="animate-rise-in" id="pageContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('sidebarContainer').innerHTML = renderSidebar('settings.html');
+document.getElementById('topbarContainer').innerHTML = renderTopbar();
+
+function render() {
+  const { settings } = getStore();
+  document.getElementById('pageContent').innerHTML = `
+    <div class="page-heading">
+      <div>
+        <p class="page-heading-eyebrow">Make it yours</p>
+        <h1 class="page-heading-title font-display">Settings</h1>
+        <p class="page-heading-desc">A few gentle defaults keep your weekly picture honest.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card" style="padding:32px">
+        <form id="settingsForm" onsubmit="return false" style="display:flex;flex-direction:column;gap:24px">
+          <div>
+            <p class="font-display" style="font-size:22px;font-weight:700">Weekly rhythm</p>
+            <p style="margin-top:4px;font-size:14px;color:var(--muted-fg)">Tell SpendWise what a normal week looks like.</p>
+          </div>
+          <label class="label">Weekly pocket money
+            <input class="input" type="number" name="weeklyAllowance" min="0" value="${settings.weeklyAllowance}" style="margin-top:6px">
+            <span style="display:block;margin-top:6px;font-size:12px;font-weight:400;color:var(--muted-fg)">The amount you expect to receive each week.</span>
+          </label>
+          <label class="label">Weekly savings target
+            <input class="input" type="number" name="weeklySavingsTarget" min="0" value="${settings.weeklySavingsTarget}" style="margin-top:6px">
+            <span style="display:block;margin-top:6px;font-size:12px;font-weight:400;color:var(--muted-fg)">A target, not a test. You can change it any time.</span>
+          </label>
+          <label class="label">Currency
+            <select class="select" name="currency" style="margin-top:6px">
+              <option value="INR" ${settings.currency==='INR'?'selected':''}>Indian rupee (₹)</option>
+              <option value="USD" ${settings.currency==='USD'?'selected':''}>US Dollar ($)</option>
+              <option value="EUR" ${settings.currency==='EUR'?'selected':''}>Euro (€)</option>
+              <option value="GBP" ${settings.currency==='GBP'?'selected':''}>British Pound (£)</option>
+            </select>
+          </label>
+          <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:20px">
+            <span id="savedMsg" style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2d806b;opacity:0;transition:opacity .3s">${icons.check} Saved</span>
+            <button type="submit" class="btn btn-primary">Save preferences</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card" style="padding:32px;background:rgba(246,215,122,.15)">
+        <div style="width:44px;height:44px;border-radius:16px;background:var(--primary);display:grid;place-items:center;color:var(--primary-fg)">${icons.target}</div>
+        <h2 class="font-display" style="margin-top:24px;font-size:28px;font-weight:700;line-height:1.1">Small plans, softer weeks.</h2>
+        <p style="margin-top:12px;font-size:14px;line-height:1.7;color:var(--muted-fg)">Your allowance and savings target help us calculate a daily number that feels safe, not restrictive.</p>
+        <div style="margin-top:32px;border-radius:16px;background:rgba(253,250,243,.7);padding:16px">
+          <p style="font-size:12px;font-weight:700;color:var(--muted-fg)">Current weekly plan</p>
+          <p style="margin-top:8px;font-family:'DM Mono',monospace;font-size:20px">${currency(settings.weeklyAllowance)}</p>
+          <div style="margin:12px 0;height:1px;background:var(--border)"></div>
+          <p style="font-size:12px;color:var(--muted-fg)">Saving toward <b style="color:var(--fg)">${currency(settings.weeklySavingsTarget)}</b></p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('settingsForm').onsubmit = (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    updateSettings({ weeklyAllowance: Number(fd.get('weeklyAllowance')), weeklySavingsTarget: Number(fd.get('weeklySavingsTarget')), currency: fd.get('currency') });
+    const msg = document.getElementById('savedMsg');
+    msg.style.opacity = '1';
+    setTimeout(() => { msg.style.opacity = '0'; render(); }, 2600);
+  };
+}
+
+render();
+</script>
+</body>
+</html>

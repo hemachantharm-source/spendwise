@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transactions — SpendWise</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="store.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarContainer"></div>
+  <div class="main">
+    <div id="topbarContainer"></div>
+    <div class="page-content">
+      <div class="animate-rise-in" id="pageContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('sidebarContainer').innerHTML = renderSidebar('history.html');
+document.getElementById('topbarContainer').innerHTML = renderTopbar();
+
+let searchVal = '', typeVal = '', catVal = '';
+
+function render() {
+  const { transactions } = getStore();
+  const filtered = transactions.filter(t => {
+    const q = searchVal.toLowerCase();
+    const matchSearch = !q || (t.note||'').toLowerCase().includes(q) || (t.source||'').toLowerCase().includes(q) || (t.category||'').toLowerCase().includes(q);
+    const matchType = !typeVal || t.type === typeVal;
+    const matchCat = !catVal || (t.category||'').toLowerCase().includes(catVal.toLowerCase());
+    return matchSearch && matchType && matchCat;
+  });
+
+  document.getElementById('pageContent').innerHTML = `
+    <div class="page-heading">
+      <div>
+        <p class="page-heading-eyebrow">Your money trail</p>
+        <h1 class="page-heading-title font-display">Transactions</h1>
+        <p class="page-heading-desc">A clear, searchable record of where your money is moving.</p>
+      </div>
+      <button class="btn btn-primary" onclick="showAddModal()">${icons.plus} Add transaction</button>
+    </div>
+
+    <div class="card" style="margin-bottom:20px;padding:16px">
+      <div style="display:flex;flex-wrap:wrap;gap:12px">
+        <label style="position:relative;flex:1;min-width:200px">
+          <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted-fg)">${icons.search}</span>
+          <input class="input" id="searchInput" value="${searchVal}" placeholder="Search notes, sources, categories..." style="padding-left:40px" oninput="searchVal=this.value;render()">
+        </label>
+        <select class="select" style="min-width:130px" onchange="typeVal=this.value;render()">
+          <option value="" ${!typeVal?'selected':''}>All types</option>
+          <option value="expense" ${typeVal==='expense'?'selected':''}>Expenses</option>
+          <option value="income" ${typeVal==='income'?'selected':''}>Income</option>
+        </select>
+        <input class="input" value="${catVal}" placeholder="Category" style="width:130px" oninput="catVal=this.value;render()">
+      </div>
+    </div>
+
+    <div class="card" style="padding:20px 28px">
+      ${filtered.length
+        ? filtered.map(t => renderTxRow(t, true)).join('')
+        : `<div class="empty-state">
+            <div class="empty-icon">${icons.dollar}</div>
+            <h2 class="empty-title">No transactions found</h2>
+            <p class="empty-copy">${searchVal||typeVal||catVal ? 'Try a different search or clear the filters.' : 'When money moves, log it here.'}</p>
+            ${!searchVal&&!typeVal&&!catVal ? `<button class="btn btn-primary" style="margin-top:20px" onclick="showAddModal()">${icons.plus} Add transaction</button>` : ''}
+          </div>`}
+    </div>
+  `;
+}
+
+function showAddModal() {
+  openModal('Add a transaction', renderTransactionForm(null, 'txForm'));
+  document.getElementById('txForm').onsubmit = (e) => {
+    e.preventDefault();
+    addTransaction(getFormData('txForm'));
+    closeModal(); render();
+  };
+}
+
+function editTx(id) {
+  const tx = getStore().transactions.find(t => t.id === id);
+  if (!tx) return;
+  openModal('Edit transaction', renderTransactionForm(tx, 'txForm'));
+  document.getElementById('txForm').onsubmit = (e) => {
+    e.preventDefault();
+    updateTransaction(id, getFormData('txForm'));
+    closeModal(); render();
+  };
+}
+
+function deleteTx(id) {
+  if (confirm('Delete this transaction?')) { deleteTransaction(id); render(); }
+}
+
+render();
+</script>
+</body>
+</html>

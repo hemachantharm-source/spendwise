@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics — SpendWise</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="store.js"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebarContainer"></div>
+  <div class="main">
+    <div id="topbarContainer"></div>
+    <div class="page-content">
+      <div class="animate-rise-in" id="pageContent"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('sidebarContainer').innerHTML = renderSidebar('analytics.html');
+document.getElementById('topbarContainer').innerHTML = renderTopbar();
+
+let period = 'weekly', catFilter = '';
+let lineChartInstance = null;
+
+function getLabel(dateStr, p) {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (p === 'daily') return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+  if (p === 'weekly') return `W${Math.ceil(d.getDate()/7)} ${d.toLocaleDateString('en-IN',{month:'short'})}`;
+  if (p === 'monthly') return d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+  return d.getFullYear().toString();
+}
+
+function render() {
+  const { transactions } = getStore();
+  const expenses = transactions.filter(t =>
+    t.type === 'expense' && (!catFilter || (t.category||'').toLowerCase().includes(catFilter.toLowerCase()))
+  );
+
+  const pointMap = {};
+  expenses.forEach(t => { const l = getLabel(t.date, period); pointMap[l] = (pointMap[l]||0) + t.amount; });
+  const points = Object.entries(pointMap).map(([label, amount]) => ({ label, amount }));
+
+  const catMap = {};
+  expenses.forEach(t => { catMap[t.category] = (catMap[t.category]||0) + t.amount; });
+  const total = Object.values(catMap).reduce((s,v)=>s+v,0);
+  const categories = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).map(([category,amount])=>({ category, amount, percentage: total>0?(amount/total)*100:0 }));
+
+  document.getElementById('pageContent').innerHTML = `
+    <div class="page-heading">
+      <div>
+        <p class="page-heading-eyebrow">Patterns, not judgement</p>
+        <h1 class="page-heading-title font-display">Analytics</h1>
+        <p class="page-heading-desc">Notice your habits, then decide what deserves your attention.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;align-items:center">
+      ${['daily','weekly','monthly','yearly'].map(p=>`
+        <button class="period-btn ${period===p?'active':''}" onclick="period='${p}';render()">${p}</button>
+      `).join('')}
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        ${icons.filter}
+        <input class="input" value="${catFilter}" placeholder="Filter category" style="width:140px;font-size:12px;padding:8px 12px" oninput="catFilter=this.value;render()">
+      </div>
+    </div>
+
+    ${expenses.length === 0 ? `
+      <div class="card" style="padding:28px">
+        <div class="empty-state"><div class="empty-icon">${icons.chart}</div><h2 class="empty-title">No expense data yet</h2><p class="empty-copy">Add some expenses to see your analytics.</p></div>
+      </div>
+    ` : `
+      <div class="grid-2">
+        <div class="card" style="padding:28px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between">
+            <div>
+              <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">Total expenses</p>
+              <p class="font-display" style="margin-top:8px;font-size:36px;font-weight:700">${currency(total)}</p>
+            </div>
+            ${icons.trending}
+          </div>
+          <div style="margin-top:20px;height:208px">
+            <canvas id="lineChart"></canvas>
+          </div>
+        </div>
+        <div class="card" style="padding:28px">
+          <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">Where it goes</p>
+          <h2 class="font-display" style="margin-top:8px;font-size:22px;font-weight:700">Category mix</h2>
+          <div style="margin-top:24px;display:flex;flex-direction:column;gap:16px">
+            ${categories.slice(0,5).map(item=>`
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px">
+                  <span style="font-weight:700">${item.category}</span>
+                  <span style="font-family:'DM Mono',monospace;color:var(--muted-fg)">${currency(item.amount)} · ${Math.round(item.percentage)}%</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill" style="width:${item.percentage}%"></div></div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;padding:28px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+          <div>
+            <p style="font-family:'DM Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.18em;color:var(--accent)">A closer look</p>
+            <h2 class="font-display" style="margin-top:8px;font-size:22px;font-weight:700">Category summary</h2>
+          </div>
+          <span style="border-radius:99px;background:var(--secondary);padding:4px 12px;font-size:12px;font-weight:700;text-transform:capitalize">${period}</span>
+        </div>
+        <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+          ${categories.map(item=>`
+            <div style="border-radius:16px;background:rgba(237,233,223,.6);padding:16px">
+              <p style="font-size:14px;font-weight:700">${item.category}</p>
+              <p style="margin-top:8px;font-family:'DM Mono',monospace;font-size:18px">${currency(item.amount)}</p>
+              <p style="margin-top:4px;font-size:12px;color:var(--muted-fg)">${Math.round(item.percentage)}% of expenses</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `}
+  `;
+
+  // Draw line chart
+  const ctx = document.getElementById('lineChart');
+  if (ctx && points.length) {
+    if (lineChartInstance) lineChartInstance.destroy();
+    lineChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: points.map(p => p.label),
+        datasets: [{
+          data: points.map(p => p.amount),
+          borderColor: '#244f4b', borderWidth: 3, tension: 0.4,
+          pointBackgroundColor: '#f6d77a', pointBorderColor: '#244f4b', pointBorderWidth: 2, pointRadius: 4,
+          fill: false,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => currency(c.raw) }, backgroundColor: '#fdfaf3', titleColor: '#294440', bodyColor: '#294440', borderColor: '#ddd6c8', borderWidth: 1, cornerRadius: 12 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: 'rgba(221,214,200,.4)' }, ticks: { font: { size: 10 }, callback: v => `₹${v}` } }
+        }
+      }
+    });
+  }
+}
+
+render();
+</script>
+</body>
+</html>
